@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Loaded</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+    <!-- Custom Title Bar -->
+    <div class="title-bar">
+        <div class="title-bar-left">
+            <div class="app-icon">⚡</div>
+            <span class="app-title">LOADED.EXE</span>
+            <div class="status-indicator">
+                <span class="status-dot"></span>
+                <span class="status-text">ONLINE</span>
+            </div>
+        </div>
+        <div class="title-bar-controls">
+            <button class="title-btn minimize-btn" id="minimizeBtn">_</button>
+            <button class="title-btn maximize-btn" id="maximizeBtn">□</button>
+            <button class="title-btn close-btn" id="closeBtn">×</button>
+        </div>
+    </div>
+
+    <div class="app-wrapper">
+        <div class="container">
+            <!-- Left Column -->
+            <div class="left-column">
+                <!-- Header Section -->
+                <header class="header">
+                    <div class="header-content">
+                        <div class="logo-section">
+                            <div class="logo-icon">▶</div>
+                            <div class="logo-text">
+                                <h1>LOADED</h1>
+                                <span class="version">v2.0 • by nova </span>
+                            </div>
+                        </div>
+                        <div class="support-section">
+                            <a href="#" id="supportBtn" class="support-btn" title="Support on Ko-fi">
+                                <span class="support-icon">☕</span>
+                                <span class="support-text">Support</span>
+                            </a>
+                        </div>
+                    </div>
+                </header>
+
+                <!-- URL Input Section -->
+                <section class="url-section">
+                    <div class="input-group">
+                        <input type="text" id="urlInput" placeholder="Paste YouTube URL here..." class="url-input">
+                        <button id="fetchBtn" class="fetch-btn">
+                            <span class="btn-text">LOAD</span>
+                            <div class="spinner hidden"></div>
+                        </button>
+                    </div>
+                </section>
+
+                <!-- Video Info Section -->
+                <section class="video-info hidden" id="videoInfo">
+                    <div class="video-card">
+                        <div class="video-thumbnail">
+                            <img id="thumbnail" src="" alt="Video thumbnail">
+                            <div class="video-duration" id="duration"></div>
+                        </div>
+                        <div class="video-details">
+                            <h3 id="videoTitle"></h3>
+                            <p class="video-author" id="videoAuthor"></p>
+                            <p class="video-stats" id="videoStats"></p>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Progress Section -->
+                <section class="progress-section hidden" id="progressSection">
+                    <div class="progress-card">
+                        <h4 id="progressTitle">Downloading...</h4>
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="progressFill"></div>
+                        </div>
+                        <div class="progress-info">
+                            <span id="progressPercent">0%</span>
+                            <span id="progressSize">0 MB / 0 MB</span>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Download History -->
+                <section class="history-section">
+                    <div class="history-header">
+                        <h3>Recent Downloads</h3>
+                        <button id="historyToggle" class="history-toggle-btn">
+                            <span class="toggle-icon">▼</span>
+                        </button>
+                    </div>
+                    <div class="history-list hidden" id="historyList">
+                        <div class="empty-state">
+                            <p>No downloads yet. Start by pasting a YouTube URL above!</p>
+                        </div>
+                    </div>
+                </section>
+            </div>
+
+            <!-- Right Column -->
+            <div class="right-column">
+                <!-- Download Options Section -->
+                <section class="download-options hidden" id="downloadOptions">
+                    <div class="options-header">
+                        <h3>Download Options</h3>
+                        <div class="format-tabs">
+                            <button class="tab-btn active" data-tab="video">Video</button>
+                            <button class="tab-btn" data-tab="audio">Audio Only</button>
+                        </div>
+                    </div>
+
+                    <div class="compact-options-layout">
+                        <!-- Left side: Quality and Format -->
+                        <div class="options-column">
+                            <div class="tab-content" id="videoTab">
+                                <div class="format-section">
+                                    <h4 class="format-category-title">🎬 VIDEO QUALITY</h4>
+                                    <div class="quality-grid" id="videoQualityOptions">
+                                        <!-- Quality options will be populated by JavaScript -->
+                                    </div>
+                                </div>
+
+                                <div class="format-section">
+                                    <h4 class="format-category-title">📁 VIDEO FORMAT</h4>
+                                    <div class="format-selection-grid">
+                                        <div class="format-option active" data-format="mp4">
+                                            <div class="format-icon">🎬</div>
+                                            <div class="format-details">
+                                                <h6>MP4</h6>
+                                                <p>Universal compatibility</p>
+                                            </div>
+                                        </div>
+                                        <div class="format-option" data-format="mov">
+                                            <div class="format-icon">🍎</div>
+                                            <div class="format-details">
+                                                <h6>MOV</h6>
+                                                <p>Apple optimized</p>
+                                            </div>
+                                        </div>
+                                        <div class="format-option" data-format="mkv">
+                                            <div class="format-icon">🔧</div>
+                                            <div class="format-details">
+                                                <h6>MKV</h6>
+                                                <p>High quality container</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="tab-content hidden" id="audioTab">
+                                <div class="format-section">
+                                    <h4 class="format-category-title">🎵 AUDIO QUALITY</h4>
+                                    <div class="quality-grid" id="audioQualityOptions">
+                                        <!-- Audio quality options will be populated by JavaScript -->
+                                    </div>
+                                </div>
+
+                                <div class="format-section">
+                                    <h4 class="format-category-title">📁 AUDIO FORMAT</h4>
+                                    <div class="format-selection-grid">
+                                        <div class="format-option active" data-format="mp3">
+                                            <div class="format-icon">🎵</div>
+                                            <div class="format-details">
+                                                <h6>MP3</h6>
+                                                <p>Universal compatibility</p>
+                                            </div>
+                                        </div>
+                                        <div class="format-option" data-format="wav">
+                                            <div class="format-icon">🔊</div>
+                                            <div class="format-details">
+                                                <h6>WAV</h6>
+                                                <p>Lossless quality</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Right side: Export Configuration -->
+                        <div class="options-column">
+                            <div class="download-settings">
+                                <div class="settings-header">
+                                    <h4>⚙️ EXPORT CONFIGURATION</h4>
+                                    <div class="auto-export-toggle">
+                                        <input type="checkbox" id="autoExportToggle" checked>
+                                        <label for="autoExportToggle" class="toggle-label">AUTO-EXPORT</label>
+                                    </div>
+                                </div>
+
+                                <div class="setting-group">
+                                    <label for="downloadPath">📁 EXPORT DIRECTORY:</label>
+                                    <div class="path-input-group">
+                                        <input type="text" id="downloadPath" readonly
+                                            placeholder="Auto-export to Downloads/YouTube Downloads">
+                                        <button id="selectPathBtn" class="select-path-btn">BROWSE</button>
+                                    </div>
+                                </div>
+
+                                <div class="setting-group">
+                                    <label for="filename">📝 FILENAME:</label>
+                                    <input type="text" id="filename" class="filename-input"
+                                        placeholder="Auto-generated from video title...">
+                                </div>
+                            </div>
+
+                            <button id="downloadBtn" class="download-btn" disabled>
+                                <span class="btn-text">Download</span>
+                                <div class="spinner hidden"></div>
+                            </button>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+
+</html>

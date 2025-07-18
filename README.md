@@ -4,7 +4,7 @@ Download YouTube videos and audio in the highest quality with this sleek, powerf
 
 🚀 FEATURES
 
-• High-Resolution Downloads - Download videos in up to 4K quality • Audio Extraction - Save audio tracks in MP3 or WAV format • Format Conversion - Convert to MP4, MOV, or MKV video formats • Custom Quality Selection - Choose exactly the quality you want • Sleek Dark Interface - Tech-aesthetic UI with purple accents • No Ads or Bloatware - Clean, focused experience • Portable Application - No installation required, run from anywhere • Download History - Track your previous downloads • Auto-Export - Save directly to your Downloads folder
+• High-Resolution Downloads - Download videos in up to 4K quality • Audio Extraction - Save audio tracks in MP3 or WAV format • Format Conversion - Convert to MP4, MOV, or MKV video formats • Custom Quality Selection - Choose exactly the quality you want • Sleek Dark Interface - Tech-aesthetic UI with purple accents • No Ads or Bloatware - Clean, focused experience • Portable Application • Download History - Track your previous downloads • Auto-Export - Save directly to your Downloads folder
 
 💻 SYSTEM REQUIREMENTS
 

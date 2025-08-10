@@ -9,11 +9,13 @@ class YouTubeDownloader {
         this.loadDownloadHistory();
         this.setupProgressListeners();
         this.initializeAutoExport();
+        this.initializeSettings();
     }
 
     initializeElements() {
         // Input elements
         this.urlInput = document.getElementById('urlInput');
+        this.clearBtn = document.getElementById('clearBtn');
         this.fetchBtn = document.getElementById('fetchBtn');
         this.downloadBtn = document.getElementById('downloadBtn');
         this.downloadPathInput = document.getElementById('downloadPath');
@@ -60,7 +62,6 @@ class YouTubeDownloader {
         this.maximizeBtn = document.getElementById('maximizeBtn');
         this.closeBtn = document.getElementById('closeBtn');
     }
-
     bindEvents() {
         // Main functionality
         this.fetchBtn.addEventListener('click', () => this.fetchVideoInfo());
@@ -70,32 +71,7 @@ class YouTubeDownloader {
         this.downloadBtn.addEventListener('click', () => this.downloadVideo());
         this.selectPathBtn.addEventListener('click', () => this.selectDownloadPath());
 
-        // History toggle
-        if (this.historyToggle) {
-            this.historyToggle.addEventListener('click', () => {
-                console.log('History toggle clicked');
-                this.toggleHistoryList();
-            });
-        }
-
-        // Also make the history header clickable
-        const historyHeader = document.querySelector('.history-header');
-        if (historyHeader) {
-            historyHeader.addEventListener('click', () => {
-                console.log('History header clicked');
-                this.toggleHistoryList();
-            });
-        }
-
-        // Tab switching - Fixed
-        document.querySelectorAll('.tab-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const tab = e.target.dataset.tab;
-                this.switchTab(tab);
-            });
-        });
-
-        // Window controls - Fixed
+        // Window controls
         if (this.minimizeBtn) {
             this.minimizeBtn.addEventListener('click', () => {
                 console.log('Minimize clicked');
@@ -115,8 +91,14 @@ class YouTubeDownloader {
             });
         }
 
-        // URL input validation
-        this.urlInput.addEventListener('input', () => this.validateUrl());
+        // URL input validation and clear button visibility
+        this.urlInput.addEventListener('input', () => {
+            this.validateUrl();
+            this.toggleClearButton();
+        });
+
+        // Clear button functionality
+        this.clearBtn.addEventListener('click', () => this.clearUrl());
 
         // Support button
         const supportBtn = document.getElementById('supportBtn');
@@ -130,23 +112,62 @@ class YouTubeDownloader {
         // Auto-export toggle
         this.autoExportToggle.addEventListener('change', () => this.handleAutoExportToggle());
 
-        // Quality and format selection handlers
-        this.setupQualitySelectionHandlers();
-        this.setupFormatSelectionHandlers();
+        // Tab switching
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                if (e.target.classList.contains('disabled')) return;
+                const tab = e.target.dataset.tab;
+                this.switchTab(tab);
+            });
+        });
+
+        // Initialize clear button visibility
+        this.toggleClearButton();
     }
 
     setupProgressListeners() {
         window.electronAPI.onDownloadProgress((data) => {
-            this.updateProgress(data.percent, data.downloaded, data.total);
+            this.updateProgress(data.percent, data.downloaded, data.total, data.message);
         });
 
         window.electronAPI.onConversionProgress((percent) => {
             this.updateConversionProgress(percent);
         });
+
+        window.electronAPI.onDownloadFallbackRequired(async (data) => {
+            await this.handleDownloadFallback(data);
+        });
+    }
+
+    async handleDownloadFallback(data) {
+        try {
+            const result = await window.electronAPI.showFallbackDialog(data);
+
+            if (result.cancelled) {
+                this.showError('Download cancelled - format not available');
+                return;
+            }
+
+            const { newFormat, newQuality } = result;
+            this.showSuccess(`Retrying download as ${newFormat.toUpperCase()} at ${newQuality}p`);
+
+            const currentTab = document.querySelector('.tab-btn.active').dataset.tab;
+            if (currentTab === 'video') {
+                this.selectedVideoFormat = newFormat;
+                this.selectedVideoQuality = newQuality;
+            }
+
+            setTimeout(() => {
+                this.downloadVideo();
+            }, 1000);
+
+        } catch (error) {
+            console.error('Error handling download fallback:', error);
+            this.showError('Failed to handle format fallback');
+        }
     }
 
     async initializeAutoExport() {
-        // Set up auto-export by default
         if (this.autoExportToggle.checked) {
             try {
                 const defaultPath = await window.electronAPI.getDefaultDownloadsPath();
@@ -161,19 +182,17 @@ class YouTubeDownloader {
 
     async handleAutoExportToggle() {
         if (this.autoExportToggle.checked) {
-            // Enable auto-export
             try {
                 const defaultPath = await window.electronAPI.getDefaultDownloadsPath();
                 await window.electronAPI.ensureAutoExportDir(defaultPath);
                 this.downloadPathInput.value = defaultPath;
                 this.downloadPathInput.placeholder = `Auto-export to ${defaultPath}`;
-                this.showSuccess('Auto-export enabled! Downloads will go to YouTube Downloads folder.');
+                this.showSuccess('Auto-export enabled!');
             } catch (error) {
                 this.showError('Failed to enable auto-export');
                 this.autoExportToggle.checked = false;
             }
         } else {
-            // Disable auto-export
             this.downloadPathInput.value = '';
             this.downloadPathInput.placeholder = 'Select download folder...';
         }
@@ -189,6 +208,24 @@ class YouTubeDownloader {
         } else {
             this.urlInput.style.borderColor = '#333';
         }
+    }
+
+    toggleClearButton() {
+        const hasText = this.urlInput.value.trim().length > 0;
+        this.clearBtn.classList.toggle('hidden', !hasText);
+    }
+
+    clearUrl() {
+        this.urlInput.value = '';
+        this.urlInput.focus();
+        this.validateUrl();
+        this.toggleClearButton();
+        this.hideElements([this.videoInfo, this.downloadOptions, this.progressSection]);
+        document.querySelector('.container').classList.remove('video-loaded');
+        this.currentVideoInfo = null;
+        this.selectedFormat = null;
+        this.selectedVideoQuality = null;
+        this.selectedAudioQuality = null;
     }
 
     isValidYouTubeUrl(url) {
@@ -215,10 +252,7 @@ class YouTubeDownloader {
             this.displayVideoInfo();
             this.displayFormatOptions();
             this.showElements([this.videoInfo, this.downloadOptions]);
-
-            // Auto-generate filename
             this.filenameInput.value = this.sanitizeFilename(this.currentVideoInfo.title);
-
         } catch (error) {
             this.showError(`Failed to fetch video info: ${error.message}`);
         } finally {
@@ -228,127 +262,79 @@ class YouTubeDownloader {
 
     displayVideoInfo() {
         const info = this.currentVideoInfo;
-
         this.thumbnail.src = info.thumbnail;
         this.videoTitle.textContent = info.title;
         this.videoAuthor.textContent = `by ${info.author}`;
-        this.videoStats.textContent = `${this.formatNumber(info.viewCount)} views`;
-        this.duration.textContent = this.formatDuration(info.lengthSeconds);
 
-        // Add the video-loaded class to trigger the animation to two-column layout
+        let statsText = `${this.formatNumber(info.viewCount)} views`;
+        if (info.hasAudio !== undefined) {
+            if (info.hasAudio) {
+                if (info.hasVideoWithAudio) {
+                    statsText += ' • Has Audio';
+                } else if (info.hasAudioOnly) {
+                    statsText += ' • Audio Only';
+                }
+            } else {
+                statsText += ' • No Audio Track';
+            }
+        }
+        this.videoStats.textContent = statsText;
+        this.duration.textContent = this.formatDuration(info.lengthSeconds);
         document.querySelector('.container').classList.add('video-loaded');
     }
 
     displayFormatOptions() {
-        // Store available formats for later use
         this.availableFormats = this.currentVideoInfo.formats;
 
-        // Enable quality selection - the HTML already has the quality options
-        // Just need to enable the selection handlers
+        const audioTab = document.querySelector('.tab-btn[data-tab="audio"]');
+        if (audioTab) {
+            if (!this.currentVideoInfo.hasAudio) {
+                audioTab.classList.add('disabled');
+                audioTab.title = 'This video has no audio track';
+
+                const currentTab = document.querySelector('.tab-btn.active');
+                if (currentTab && currentTab.dataset.tab === 'audio') {
+                    const videoTab = document.querySelector('.tab-btn[data-tab="video"]');
+                    if (videoTab) {
+                        videoTab.click();
+                    }
+                }
+            } else {
+                audioTab.classList.remove('disabled');
+                audioTab.title = 'Download audio only';
+            }
+        }
+
         this.enableQualitySelection();
     }
 
-    setupQualitySelectionHandlers() {
-        // Video quality selection
-        const videoQualityOptions = document.querySelectorAll('#videoQualityOptions .quality-option');
-        videoQualityOptions.forEach(option => {
-            option.addEventListener('click', () => {
-                // Remove previous selection
-                videoQualityOptions.forEach(opt => opt.classList.remove('selected'));
-                // Select current
-                option.classList.add('selected');
-                this.selectedVideoQuality = parseInt(option.dataset.quality);
-                this.updateDownloadButton();
-            });
-        });
-
-        // Audio quality selection
-        const audioQualityOptions = document.querySelectorAll('#audioQualityOptions .quality-option');
-        audioQualityOptions.forEach(option => {
-            option.addEventListener('click', () => {
-                // Remove previous selection
-                audioQualityOptions.forEach(opt => opt.classList.remove('selected'));
-                // Select current
-                option.classList.add('selected');
-                this.selectedAudioQuality = parseInt(option.dataset.quality);
-                this.updateDownloadButton();
-            });
-        });
-    }
-
-    setupFormatSelectionHandlers() {
-        // Video format selection - Fixed
-        const videoFormatOptions = document.querySelectorAll('#videoTab .format-option');
-        videoFormatOptions.forEach(option => {
-            option.addEventListener('click', () => {
-                console.log('Video format clicked:', option.dataset.format);
-                // Remove previous selection
-                videoFormatOptions.forEach(opt => opt.classList.remove('active'));
-                // Select current
-                option.classList.add('active');
-                this.selectedVideoFormat = option.dataset.format;
-                console.log('Selected video format:', this.selectedVideoFormat);
-                this.updateDownloadButton();
-            });
-        });
-
-        // Audio format selection - Fixed
-        const audioFormatOptions = document.querySelectorAll('#audioTab .format-option');
-        audioFormatOptions.forEach(option => {
-            option.addEventListener('click', () => {
-                console.log('Audio format clicked:', option.dataset.format);
-                // Remove previous selection
-                audioFormatOptions.forEach(opt => opt.classList.remove('active'));
-                // Select current
-                option.classList.add('active');
-                this.selectedAudioFormat = option.dataset.format;
-                console.log('Selected audio format:', this.selectedAudioFormat);
-                this.updateDownloadButton();
-            });
-        });
-    }
-
     enableQualitySelection() {
-        // Get the maximum available video height from the formats
         const maxVideoHeight = this.currentVideoInfo.formats
             .filter(f => f.hasVideo)
             .reduce((max, f) => Math.max(max, f.height || this.extractHeightFromQuality(f.quality) || 0), 0);
 
-        console.log(`Maximum available video height: ${maxVideoHeight}p`);
-
-        // Define the quality thresholds we want to show based on max height
         const qualityThresholds = [4320, 2880, 2160, 1440, 1080, 720, 480, 360, 240, 144];
-
-        // Determine which qualities to show based on max height
         const visibleQualities = qualityThresholds.filter(quality => {
-            // For 4K videos, show 4K, 2K, 1080p, 720p
             if (maxVideoHeight >= 2160) {
                 return quality <= maxVideoHeight && quality >= 720;
-            }
-            // For 2K videos, show 2K, 1080p, 720p
-            else if (maxVideoHeight >= 1440) {
+            } else if (maxVideoHeight >= 1440) {
                 return quality <= maxVideoHeight && quality >= 720;
-            }
-            // For 1080p videos, show 1080p, 720p
-            else if (maxVideoHeight >= 1080) {
+            } else if (maxVideoHeight >= 1080) {
                 return quality <= maxVideoHeight && quality >= 720;
-            }
-            // For 720p videos, show 720p, 480p
-            else if (maxVideoHeight >= 720) {
+            } else if (maxVideoHeight >= 720) {
                 return quality <= maxVideoHeight && quality >= 480;
-            }
-            // For lower resolution videos, show all available options
-            else {
+            } else {
                 return quality <= maxVideoHeight;
             }
         });
 
-        console.log(`Visible qualities: ${visibleQualities.join(', ')}p`);
+        this.createQualityOptions(visibleQualities);
+        this.setupQualitySelectionHandlers();
+        this.setupFormatSelectionHandlers();
+        this.autoSelectDefaults();
+    }
 
-        // Create video quality options dynamically
-        const videoQualityContainer = document.getElementById('videoQualityOptions');
-        videoQualityContainer.innerHTML = '';
-
+    createQualityOptions(visibleQualities) {
         const qualityLabels = {
             4320: { label: '8K (4320p)', details: 'Ultra HD • Best Quality' },
             2880: { label: '5K (2880p)', details: 'Ultra HD • High Quality' },
@@ -362,9 +348,11 @@ class YouTubeDownloader {
             144: { label: '144p', details: 'Lowest Quality' }
         };
 
+        const videoQualityContainer = document.getElementById('videoQualityOptions');
+        videoQualityContainer.innerHTML = '';
+
         visibleQualities.forEach(quality => {
             const qualityInfo = qualityLabels[quality] || { label: `${quality}p`, details: 'Standard Quality' };
-
             const optionElement = document.createElement('div');
             optionElement.className = 'quality-option';
             optionElement.dataset.quality = quality;
@@ -372,11 +360,9 @@ class YouTubeDownloader {
                 <div class="quality-label">${qualityInfo.label}</div>
                 <div class="quality-details">${qualityInfo.details}</div>
             `;
-
             videoQualityContainer.appendChild(optionElement);
         });
 
-        // Create audio quality options dynamically
         const audioQualityContainer = document.getElementById('audioQualityOptions');
         audioQualityContainer.innerHTML = '';
 
@@ -393,14 +379,54 @@ class YouTubeDownloader {
                 <div class="quality-label">${audio.label}</div>
                 <div class="quality-details">${audio.details}</div>
             `;
-
             audioQualityContainer.appendChild(optionElement);
         });
+    }
 
-        // Re-setup event handlers for the new elements
-        this.setupQualitySelectionHandlers();
+    setupQualitySelectionHandlers() {
+        const videoQualityOptions = document.querySelectorAll('#videoQualityOptions .quality-option');
+        videoQualityOptions.forEach(option => {
+            option.addEventListener('click', () => {
+                videoQualityOptions.forEach(opt => opt.classList.remove('selected'));
+                option.classList.add('selected');
+                this.selectedVideoQuality = parseInt(option.dataset.quality);
+                this.updateDownloadButton();
+            });
+        });
 
-        // Auto-select default formats
+        const audioQualityOptions = document.querySelectorAll('#audioQualityOptions .quality-option');
+        audioQualityOptions.forEach(option => {
+            option.addEventListener('click', () => {
+                audioQualityOptions.forEach(opt => opt.classList.remove('selected'));
+                option.classList.add('selected');
+                this.selectedAudioQuality = parseInt(option.dataset.quality);
+                this.updateDownloadButton();
+            });
+        });
+    }
+    setupFormatSelectionHandlers() {
+        const videoFormatOptions = document.querySelectorAll('#videoTab .format-option');
+        videoFormatOptions.forEach(option => {
+            option.addEventListener('click', () => {
+                videoFormatOptions.forEach(opt => opt.classList.remove('active'));
+                option.classList.add('active');
+                this.selectedVideoFormat = option.dataset.format;
+                this.updateDownloadButton();
+            });
+        });
+
+        const audioFormatOptions = document.querySelectorAll('#audioTab .format-option');
+        audioFormatOptions.forEach(option => {
+            option.addEventListener('click', () => {
+                audioFormatOptions.forEach(opt => opt.classList.remove('active'));
+                option.classList.add('active');
+                this.selectedAudioFormat = option.dataset.format;
+                this.updateDownloadButton();
+            });
+        });
+    }
+
+    autoSelectDefaults() {
         const firstVideoFormatOption = document.querySelector('#videoTab .format-option[data-format="mp4"]');
         if (firstVideoFormatOption) {
             firstVideoFormatOption.click();
@@ -411,14 +437,11 @@ class YouTubeDownloader {
             firstAudioFormatOption.click();
         }
 
-        // Auto-select the highest video quality
         const firstVideoOption = document.querySelector('#videoQualityOptions .quality-option');
         if (firstVideoOption) {
-            console.log(`Auto-selecting ${firstVideoOption.dataset.quality}p quality`);
             firstVideoOption.click();
         }
 
-        // Auto-select the first audio quality option
         const firstAudioOption = document.querySelector('#audioQualityOptions .quality-option');
         if (firstAudioOption) {
             firstAudioOption.click();
@@ -435,103 +458,7 @@ class YouTubeDownloader {
             this.selectedAudioQuality && this.selectedAudioFormat;
 
         const hasPath = this.downloadPathInput && this.downloadPathInput.value;
-
-        console.log('Update download button:', {
-            currentTab,
-            hasSelection,
-            hasPath,
-            videoQuality: this.selectedVideoQuality,
-            videoFormat: this.selectedVideoFormat,
-            audioQuality: this.selectedAudioQuality,
-            audioFormat: this.selectedAudioFormat
-        });
-
         this.downloadBtn.disabled = !hasSelection || !hasPath;
-    }
-
-    renderFormats(formats, container, type) {
-        container.innerHTML = '';
-
-        // Sort formats by quality
-        const sortedFormats = formats.sort((a, b) => {
-            if (type === 'video') {
-                return this.getQualityOrder(b.quality) - this.getQualityOrder(a.quality);
-            } else {
-                // For audio, sort by actual bitrate or extract from quality string
-                const aBitrate = a.audioBitrate || this.extractBitrate(a.quality) || 0;
-                const bBitrate = b.audioBitrate || this.extractBitrate(b.quality) || 0;
-                return bBitrate - aBitrate;
-            }
-        });
-
-        sortedFormats.forEach(format => {
-            const formatElement = this.createFormatElement(format, type);
-            container.appendChild(formatElement);
-        });
-
-        // Auto-select best quality
-        if (sortedFormats.length > 0) {
-            const firstFormat = container.querySelector('.quality-option');
-            if (firstFormat) {
-                firstFormat.click();
-            }
-        }
-    }
-
-    createFormatElement(format, type) {
-        const div = document.createElement('div');
-        div.className = 'quality-option';
-        div.dataset.itag = format.itag;
-
-        const qualityLabel = format.quality;
-        const fileSize = format.filesize ? this.formatFileSize(format.filesize) : 'Est. size';
-
-        // Enhanced details for different format types
-        let detailsHTML = '';
-        if (type === 'video') {
-            const fps = format.fps ? `${format.fps}fps` : '';
-            const codec = format.videoCodec ? format.videoCodec.split('.')[0].toUpperCase() : '';
-            const bitrate = format.videoBitrate ? `${Math.round(format.videoBitrate / 1000)}Mbps` : '';
-
-            detailsHTML = `
-                <div class="quality-label">${qualityLabel}</div>
-                <div class="quality-details">
-                    ${format.container.toUpperCase()} • ${fileSize}
-                    ${fps ? `<br><span class="format-specs">${fps} • ${codec} • ${bitrate}</span>` : ''}
-                </div>
-            `;
-        } else {
-            const codec = format.audioCodec ? format.audioCodec.toUpperCase() : '';
-            const bitrate = format.audioBitrate ? `${format.audioBitrate}kbps` : '';
-
-            detailsHTML = `
-                <div class="quality-label">${qualityLabel}</div>
-                <div class="quality-details">
-                    ${format.container.toUpperCase()} • ${fileSize}
-                    ${codec ? `<br><span class="format-specs">${codec} • ${bitrate}</span>` : ''}
-                </div>
-            `;
-        }
-
-        div.innerHTML = detailsHTML;
-        div.addEventListener('click', () => this.selectFormat(div, format));
-
-        return div;
-    }
-
-    selectFormat(element, format) {
-        // Remove previous selection
-        element.parentElement.querySelectorAll('.quality-option').forEach(el => {
-            el.classList.remove('selected');
-        });
-
-        // Select current
-        element.classList.add('selected');
-        this.selectedFormat = format;
-        this.downloadBtn.disabled = !this.downloadPathInput.value;
-
-        // Update format indicators to show conversion status
-        this.updateFormatIndicators();
     }
 
     async selectDownloadPath() {
@@ -539,7 +466,7 @@ class YouTubeDownloader {
             const path = await window.electronAPI.selectDownloadPath();
             if (path) {
                 this.downloadPathInput.value = path;
-                this.downloadBtn.disabled = !this.selectedFormat;
+                this.updateDownloadButton();
             }
         } catch (error) {
             this.showError('Failed to select download path');
@@ -548,24 +475,18 @@ class YouTubeDownloader {
 
     async downloadVideo() {
         const currentTab = document.querySelector('.tab-btn.active').dataset.tab;
+        const isVideoFormat = currentTab === 'video';
 
-        // Check if we have the required selections
-        if (currentTab === 'video') {
+        if (isVideoFormat) {
             if (!this.selectedVideoQuality || !this.selectedVideoFormat) {
                 this.showError('Please select video quality and format');
                 return;
             }
-
-            // Log the selected quality for debugging
-            console.log(`Selected video quality: ${this.selectedVideoQuality}p`);
         } else {
             if (!this.selectedAudioQuality || !this.selectedAudioFormat) {
                 this.showError('Please select audio quality and format');
                 return;
             }
-
-            // Log the selected quality for debugging
-            console.log(`Selected audio quality: ${this.selectedAudioQuality}kbps`);
         }
 
         if (!this.downloadPathInput.value) {
@@ -574,99 +495,27 @@ class YouTubeDownloader {
         }
 
         const filename = this.filenameInput.value.trim() || this.sanitizeFilename(this.currentVideoInfo.title);
-
-        // Determine target format and find best matching source format
-        const isVideoFormat = currentTab === 'video';
         const targetFormat = isVideoFormat ? this.selectedVideoFormat : this.selectedAudioFormat;
         const targetQuality = isVideoFormat ? this.selectedVideoQuality : this.selectedAudioQuality;
-        const fullFilename = `${filename}.${targetFormat}`;
+        const fullFilename = filename.endsWith(`.${targetFormat}`) ? filename : `${filename}.${targetFormat}`;
 
-        // Log the selected quality for debugging
-        console.log(`Selected ${isVideoFormat ? 'video' : 'audio'} quality: ${targetQuality}${isVideoFormat ? 'p' : 'kbps'}`);
-        console.log('Available formats:', this.availableFormats);
-
-        // For ALL video downloads, we need to ensure we get the highest quality available
-        let bestFormat;
-
-        if (isVideoFormat) {
-            console.log('Selecting best video format for quality:', targetQuality);
-
-            // Always try to get the highest quality format available
-            const allVideoFormats = this.availableFormats.filter(f => f.hasVideo);
-
-            if (allVideoFormats.length === 0) {
-                this.showError('No video formats available');
-                return;
-            }
-
-            // Sort all video formats by height (highest first)
-            const sortedFormats = allVideoFormats.sort((a, b) => {
-                const heightA = a.height || this.extractHeightFromQuality(a.quality) || 0;
-                const heightB = b.height || this.extractHeightFromQuality(b.quality) || 0;
-                return heightB - heightA;
-            });
-
-            console.log('All video formats sorted by quality:', sortedFormats.map(f => ({
-                itag: f.itag,
-                height: f.height,
-                quality: f.quality,
-                hasVideo: f.hasVideo,
-                hasAudio: f.hasAudio
-            })));
-
-            // For high resolutions (1080p+), force high-resolution download
-            if (targetQuality >= 1080) {
-                console.log('High resolution requested, forcing high-res download method');
-
-                // Find the best format that matches or exceeds the target quality
-                let selectedFormat = sortedFormats.find(f => {
-                    const height = f.height || this.extractHeightFromQuality(f.quality) || 0;
-                    return height >= targetQuality;
-                });
-
-                // If no format matches the target, use the highest available
-                if (!selectedFormat) {
-                    selectedFormat = sortedFormats[0];
-                }
-
-                console.log('Selected high-resolution format:', selectedFormat);
-
-                // Create a format object that forces high-resolution download
-                bestFormat = {
-                    ...selectedFormat,
-                    isHighResolution: true,
-                    targetHeight: targetQuality,
-                    forceHighRes: true
-                };
-            } else {
-                // For lower resolutions, use normal selection
-                bestFormat = this.findBestMatchingFormat(isVideoFormat, targetQuality);
-            }
-        } else {
-            // For audio, use normal selection
-            bestFormat = this.findBestMatchingFormat(isVideoFormat, targetQuality);
-        }
-
-        console.log('Best matching format found:', bestFormat);
-
-        if (!bestFormat) {
-            this.showError('No suitable format found for the selected quality');
-            return;
-        }
-
-        this.setLoadingState(this.downloadBtn, true);
         this.showElements([this.progressSection]);
-        this.progressTitle.textContent = 'Downloading...';
+        this.hideElements([this.downloadOptions]);
 
         try {
+            const bestFormat = this.findBestFormat(isVideoFormat, targetQuality);
+
             const result = await window.electronAPI.downloadVideo({
                 url: this.urlInput.value.trim(),
-                format: bestFormat,
+                format: {
+                    ...bestFormat,
+                    encodingMethod: this.getEncodingMethod()
+                },
                 outputPath: this.downloadPathInput.value,
                 filename: fullFilename,
                 targetFormat: targetFormat,
                 isVideoFormat: isVideoFormat,
-                targetQuality: targetQuality // Pass the selected quality directly
+                targetQuality: targetQuality
             });
 
             if (result.success) {
@@ -675,65 +524,172 @@ class YouTubeDownloader {
                     author: this.currentVideoInfo.author,
                     thumbnail: this.currentVideoInfo.thumbnail,
                     filename: fullFilename,
-                    path: result.filePath,
-                    date: new Date().toISOString(),
-                    format: `${targetQuality}${isVideoFormat ? 'p' : 'kbps'}`,
-                    outputFormat: targetFormat.toUpperCase()
+                    downloadDate: new Date().toISOString(),
+                    format: targetFormat,
+                    quality: isVideoFormat ? `${targetQuality}p` : `${targetQuality}kbps`
                 });
 
-                this.showSuccess(`Download completed successfully as ${targetFormat.toUpperCase()}!`);
-                this.hideElements([this.progressSection]);
+                this.showSuccess(`Download completed: ${fullFilename}`);
             }
         } catch (error) {
             this.showError(`Download failed: ${error.message}`);
         } finally {
-            this.setLoadingState(this.downloadBtn, false);
+            this.hideElements([this.progressSection]);
+            this.showElements([this.downloadOptions]);
         }
     }
 
-    updateProgress(percent, downloaded, total) {
-        this.progressFill.style.width = `${percent}%`;
-        this.progressPercent.textContent = `${percent}%`;
-        this.progressSize.textContent = `${this.formatFileSize(downloaded)} / ${this.formatFileSize(total)}`;
+    findBestFormat(isVideoFormat, targetQuality) {
+        if (isVideoFormat) {
+            const allVideoFormats = this.availableFormats.filter(f => f.hasVideo);
+            const sortedFormats = allVideoFormats.sort((a, b) => {
+                const heightA = a.height || this.extractHeightFromQuality(a.quality) || 0;
+                const heightB = b.height || this.extractHeightFromQuality(b.quality) || 0;
+                return heightB - heightA;
+            });
+
+            let selectedFormat = sortedFormats.find(f => {
+                const height = f.height || this.extractHeightFromQuality(f.quality) || 0;
+                return height >= targetQuality;
+            });
+
+            if (!selectedFormat) {
+                selectedFormat = sortedFormats[0];
+            }
+
+            if (targetQuality >= 1080) {
+                return {
+                    ...selectedFormat,
+                    isHighResolution: true,
+                    targetHeight: targetQuality,
+                    forceHighRes: true
+                };
+            }
+
+            return selectedFormat;
+        } else {
+            const audioFormats = this.availableFormats.filter(f => f.hasAudio);
+            return audioFormats.sort((a, b) => (b.audioBitrate || 0) - (a.audioBitrate || 0))[0];
+        }
     }
 
+    updateProgress(percent, downloaded, total, message) {
+        const clampedPercent = Math.min(Math.max(parseFloat(percent) || 0, 0), 100);
+
+        if (!this.progressState) {
+            this.progressState = {
+                currentPercent: 0,
+                isDownloading: false,
+                lastValidPercent: 0,
+                downloadStarted: false
+            };
+        }
+
+        if (clampedPercent > 0 && !this.progressState.downloadStarted) {
+            this.progressState.downloadStarted = true;
+            this.progressState.isDownloading = true;
+        }
+
+        let finalPercent = clampedPercent;
+        if (this.progressState.isDownloading && clampedPercent < this.progressState.lastValidPercent && clampedPercent !== 0 && clampedPercent !== 100) {
+            return;
+        }
+
+        const percentDiff = Math.abs(finalPercent - this.progressState.currentPercent);
+
+        if (percentDiff >= 1 || finalPercent === 0 || finalPercent === 100) {
+            this.progressFill.style.transition = 'width 0.3s ease-out';
+            this.progressFill.style.width = `${finalPercent}%`;
+
+            const displayPercent = finalPercent === 100 ? '100' : Math.floor(finalPercent).toString();
+            this.progressPercent.textContent = `${displayPercent}%`;
+
+            this.progressState.currentPercent = finalPercent;
+            if (finalPercent > this.progressState.lastValidPercent) {
+                this.progressState.lastValidPercent = finalPercent;
+            }
+
+            if (finalPercent === 100) {
+                this.progressState.isDownloading = false;
+                this.progressState.downloadStarted = false;
+            }
+        }
+
+        if (message) {
+            let cleanMessage = message;
+
+            if (message.includes('(') && message.includes('MB')) {
+                cleanMessage = message.split('(')[0].trim();
+            }
+
+            if (cleanMessage.toLowerCase().includes('downloading')) {
+                cleanMessage = cleanMessage.replace(/\.+$/, '');
+                this.progressTitle.innerHTML = `${cleanMessage}<span class="animated-dots">...</span>`;
+            } else {
+                this.progressTitle.textContent = cleanMessage;
+            }
+        }
+
+        if (downloaded && total && downloaded > 0 && total > 0) {
+            const downloadedMB = downloaded / (1024 * 1024);
+            const totalMB = total / (1024 * 1024);
+            this.progressSize.textContent = `${downloadedMB.toFixed(1)}MB / ${totalMB.toFixed(1)}MB`;
+        } else if (message && message.includes('(') && message.includes('MB')) {
+            const sizeMatch = message.match(/\(([^)]+)\)/);
+            if (sizeMatch) {
+                this.progressSize.textContent = sizeMatch[1];
+            } else {
+                this.progressSize.textContent = 'Processing...';
+            }
+        } else {
+            if (message && message.toLowerCase().includes('converting')) {
+                this.progressSize.textContent = 'Converting file...';
+            } else if (message && message.toLowerCase().includes('merging')) {
+                this.progressSize.textContent = 'Merging streams...';
+            } else if (message && message.toLowerCase().includes('finalizing')) {
+                this.progressSize.textContent = 'Finalizing...';
+            } else {
+                this.progressSize.textContent = 'Processing...';
+            }
+        }
+    }
     updateConversionProgress(percent) {
-        this.progressTitle.textContent = '🔄 Converting to target format...';
-        this.progressFill.style.width = `${percent}%`;
-        this.progressPercent.textContent = `${Math.round(percent)}%`;
-        this.progressSize.textContent = 'Processing file...';
+        const clampedPercent = Math.min(Math.max(parseFloat(percent) || 0, 0), 100);
+
+        const currentPercent = parseFloat(this.progressPercent.textContent) || 0;
+        const percentDiff = Math.abs(clampedPercent - currentPercent);
+
+        if (percentDiff >= 1 || clampedPercent === 0 || clampedPercent === 100) {
+            this.progressTitle.textContent = '🔄 Converting to target format...';
+            this.progressFill.style.transition = 'width 0.5s ease-out';
+            this.progressFill.style.width = `${clampedPercent}%`;
+            this.progressPercent.textContent = `${Math.round(clampedPercent)}%`;
+            this.progressSize.textContent = 'Processing file...';
+        }
     }
 
     switchTab(tab) {
-        console.log('Switching to tab:', tab);
-
-        // Update tab buttons
         document.querySelectorAll('.tab-btn').forEach(btn => {
             btn.classList.toggle('active', btn.dataset.tab === tab);
         });
 
-        // Show/hide tab content - Fixed
         if (this.videoTab && this.audioTab) {
             this.videoTab.classList.toggle('hidden', tab !== 'video');
             this.audioTab.classList.toggle('hidden', tab !== 'audio');
         }
 
-        // Reset selection based on tab
         if (tab === 'video') {
             this.selectedAudioQuality = null;
-            // Keep video selection if exists
         } else {
             this.selectedVideoQuality = null;
-            // Keep audio selection if exists
         }
 
-        // Update download button state
         this.updateDownloadButton();
     }
 
     addToHistory(item) {
         this.downloadHistory.unshift(item);
-        this.downloadHistory = this.downloadHistory.slice(0, 50); // Keep last 50
+        this.downloadHistory = this.downloadHistory.slice(0, 50);
         localStorage.setItem('downloadHistory', JSON.stringify(this.downloadHistory));
         this.loadDownloadHistory();
     }
@@ -754,17 +710,16 @@ class YouTubeDownloader {
                 <div class="history-details">
                     <div class="history-title">${item.title}</div>
                     <div class="history-info">
-                        ${item.author} • ${item.format} • ${new Date(item.date).toLocaleDateString()}
+                        ${item.author} • ${item.format} • ${new Date(item.downloadDate).toLocaleDateString()}
                     </div>
                 </div>
                 <button class="history-remove-btn" data-index="${index}">×</button>
             </div>
         `).join('');
 
-        // Add event listeners to remove buttons
         document.querySelectorAll('.history-remove-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
-                e.stopPropagation(); // Prevent event bubbling
+                e.stopPropagation();
                 const index = parseInt(btn.dataset.index);
                 this.removeFromHistory(index);
             });
@@ -773,41 +728,143 @@ class YouTubeDownloader {
 
     removeFromHistory(index) {
         if (index >= 0 && index < this.downloadHistory.length) {
-            // Remove the item from the array
             this.downloadHistory.splice(index, 1);
-
-            // Update local storage
             localStorage.setItem('downloadHistory', JSON.stringify(this.downloadHistory));
-
-            // Reload the history list
             this.loadDownloadHistory();
-
-            // Show a notification
             this.showSuccess('Download removed from history');
         }
     }
+    // Settings functionality
+    initializeSettings() {
+        this.settingsBtn = document.getElementById('settingsBtn');
+        this.settingsModal = document.getElementById('settingsModal');
+        this.settingsCloseBtn = document.getElementById('settingsCloseBtn');
+        this.saveSettingsBtn = document.getElementById('saveSettingsBtn');
+        this.resetSettingsBtn = document.getElementById('resetSettingsBtn');
 
-    toggleHistoryList() {
-        if (this.historyList) {
-            // Toggle visibility classes
-            const isHidden = this.historyList.classList.contains('hidden');
+        this.encodingMethodSelect = document.getElementById('encodingMethod');
+        this.maxConcurrentDownloadsSelect = document.getElementById('maxConcurrentDownloads');
+        this.defaultVideoQualitySelect = document.getElementById('defaultVideoQuality');
+        this.defaultVideoFormatSelect = document.getElementById('defaultVideoFormat');
+        this.autoSelectBestQualityCheckbox = document.getElementById('autoSelectBestQuality');
+        this.showAdvancedOptionsCheckbox = document.getElementById('showAdvancedOptions');
+        this.minimizeToTrayCheckbox = document.getElementById('minimizeToTray');
 
-            if (isHidden) {
-                this.historyList.classList.remove('hidden');
-                this.historyList.classList.add('visible');
-            } else {
-                this.historyList.classList.remove('visible');
-                this.historyList.classList.add('hidden');
-            }
+        this.loadSettings();
+        this.bindSettingsEvents();
+    }
 
-            // Toggle the arrow icon
-            const toggleIcon = document.querySelector('.toggle-icon');
-            if (toggleIcon) {
-                toggleIcon.classList.toggle('active');
-            }
-
-            console.log('History list toggled:', isHidden ? 'showing' : 'hiding');
+    bindSettingsEvents() {
+        if (this.settingsBtn) {
+            this.settingsBtn.addEventListener('click', () => this.openSettings());
         }
+
+        if (this.settingsCloseBtn) {
+            this.settingsCloseBtn.addEventListener('click', () => this.closeSettings());
+        }
+
+        if (this.settingsModal) {
+            const overlay = this.settingsModal.querySelector('.settings-overlay');
+            if (overlay) {
+                overlay.addEventListener('click', () => this.closeSettings());
+            }
+        }
+
+        if (this.saveSettingsBtn) {
+            this.saveSettingsBtn.addEventListener('click', () => this.saveSettings());
+        }
+
+        if (this.resetSettingsBtn) {
+            this.resetSettingsBtn.addEventListener('click', () => this.resetSettings());
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && this.settingsModal && !this.settingsModal.classList.contains('hidden')) {
+                this.closeSettings();
+            }
+        });
+    }
+
+    openSettings() {
+        console.log('openSettings called');
+        console.log('settingsModal:', this.settingsModal);
+        if (this.settingsModal) {
+            this.settingsModal.classList.remove('hidden');
+            document.body.style.overflow = 'hidden';
+            console.log('Settings modal should be visible now');
+        } else {
+            console.error('Settings modal not found!');
+        }
+    }
+
+    closeSettings() {
+        if (this.settingsModal) {
+            this.settingsModal.classList.add('hidden');
+            document.body.style.overflow = '';
+        }
+    }
+
+    loadSettings() {
+        const defaultSettings = {
+            encodingMethod: 'gpu',
+            maxConcurrentDownloads: 1,
+            defaultVideoQuality: 1080,
+            defaultVideoFormat: 'mp4',
+            autoSelectBestQuality: true,
+            showAdvancedOptions: false,
+            minimizeToTray: false
+        };
+
+        const savedSettings = JSON.parse(localStorage.getItem('appSettings') || '{}');
+        this.settings = { ...defaultSettings, ...savedSettings };
+
+        if (this.encodingMethodSelect) this.encodingMethodSelect.value = this.settings.encodingMethod;
+        if (this.maxConcurrentDownloadsSelect) this.maxConcurrentDownloadsSelect.value = this.settings.maxConcurrentDownloads;
+        if (this.defaultVideoQualitySelect) this.defaultVideoQualitySelect.value = this.settings.defaultVideoQuality;
+        if (this.defaultVideoFormatSelect) this.defaultVideoFormatSelect.value = this.settings.defaultVideoFormat;
+        if (this.autoSelectBestQualityCheckbox) this.autoSelectBestQualityCheckbox.checked = this.settings.autoSelectBestQuality;
+        if (this.showAdvancedOptionsCheckbox) this.showAdvancedOptionsCheckbox.checked = this.settings.showAdvancedOptions;
+        if (this.minimizeToTrayCheckbox) this.minimizeToTrayCheckbox.checked = this.settings.minimizeToTray;
+
+        this.applySettings();
+    }
+    saveSettings() {
+        this.settings = {
+            encodingMethod: this.encodingMethodSelect?.value || 'gpu',
+            maxConcurrentDownloads: parseInt(this.maxConcurrentDownloadsSelect?.value || 1),
+            defaultVideoQuality: parseInt(this.defaultVideoQualitySelect?.value || 1080),
+            defaultVideoFormat: this.defaultVideoFormatSelect?.value || 'mp4',
+            autoSelectBestQuality: this.autoSelectBestQualityCheckbox?.checked || true,
+            showAdvancedOptions: this.showAdvancedOptionsCheckbox?.checked || false,
+            minimizeToTray: this.minimizeToTrayCheckbox?.checked || false
+        };
+
+        localStorage.setItem('appSettings', JSON.stringify(this.settings));
+        this.applySettings();
+        this.showSuccess('Settings saved successfully!');
+        this.closeSettings();
+    }
+
+    resetSettings() {
+        if (confirm('Are you sure you want to reset all settings to defaults?')) {
+            localStorage.removeItem('appSettings');
+            this.loadSettings();
+            this.showSuccess('Settings reset to defaults');
+        }
+    }
+
+    applySettings() {
+        window.appSettings = this.settings;
+
+        if (this.settings.showAdvancedOptions) {
+            document.body.classList.add('show-advanced-options');
+        } else {
+            document.body.classList.remove('show-advanced-options');
+        }
+    }
+
+    getEncodingMethod() {
+        return this.settings?.encodingMethod || 'gpu';
     }
 
     // Utility methods
@@ -816,42 +873,42 @@ class YouTubeDownloader {
         const text = button.querySelector('.btn-text');
 
         if (loading) {
-            spinner.classList.remove('hidden');
-            text.style.opacity = '0.7';
+            if (spinner) spinner.classList.remove('hidden');
+            if (text) text.style.opacity = '0.7';
             button.disabled = true;
         } else {
-            spinner.classList.add('hidden');
-            text.style.opacity = '1';
+            if (spinner) spinner.classList.add('hidden');
+            if (text) text.style.opacity = '1';
             button.disabled = false;
         }
     }
 
     showElements(elements) {
-        elements.forEach(el => el.classList.remove('hidden'));
+        elements.forEach(el => {
+            if (el) el.classList.remove('hidden');
+        });
     }
 
     hideElements(elements) {
-        elements.forEach(el => el.classList.add('hidden'));
+        elements.forEach(el => {
+            if (el) el.classList.add('hidden');
+        });
     }
 
     showError(message) {
-        // Create a better error notification
         this.showNotification(message, 'error');
     }
 
     showSuccess(message) {
-        // Create a better success notification
         this.showNotification(message, 'success');
     }
 
     showNotification(message, type = 'info') {
-        // Remove existing notifications
         const existing = document.querySelector('.notification');
         if (existing) {
-            existing.remove();
+            this.hideNotification(existing);
         }
 
-        // Create notification element
         const notification = document.createElement('div');
         notification.className = `notification notification-${type}`;
         notification.innerHTML = `
@@ -862,27 +919,36 @@ class YouTubeDownloader {
             </div>
         `;
 
-        // Add to page
         document.body.appendChild(notification);
 
-        // Add close functionality
-        notification.querySelector('.notification-close').addEventListener('click', () => {
-            notification.remove();
+        const closeBtn = notification.querySelector('.notification-close');
+        closeBtn.addEventListener('click', () => {
+            this.hideNotification(notification);
         });
 
-        // Auto remove after 5 seconds
+        // Show notification with animation
+        setTimeout(() => {
+            notification.classList.add('show');
+        }, 50);
+
+        // Auto-hide after 3 seconds (reduced from 5)
+        setTimeout(() => {
+            if (notification.parentNode) {
+                this.hideNotification(notification);
+            }
+        }, 3000);
+    }
+
+    hideNotification(notification) {
+        notification.classList.add('hide');
+        notification.classList.remove('show');
+
         setTimeout(() => {
             if (notification.parentNode) {
                 notification.remove();
             }
-        }, 5000);
-
-        // Animate in
-        setTimeout(() => {
-            notification.classList.add('show');
-        }, 100);
+        }, 300); // Wait for exit animation to complete
     }
-
     sanitizeFilename(filename) {
         return filename.replace(/[<>:"/\\|?*]/g, '').trim();
     }
@@ -908,279 +974,12 @@ class YouTubeDownloader {
         return num.toString();
     }
 
-    formatFileSize(bytes) {
-        if (!bytes) return '0 B';
-        const sizes = ['B', 'KB', 'MB', 'GB'];
-        const i = Math.floor(Math.log(bytes) / Math.log(1024));
-        return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${sizes[i]}`;
-    }
-
-    extractBitrate(quality) {
-        // Extract bitrate from quality strings like "128kbps (Standard)"
-        const match = quality.match(/(\d+)kbps/);
-        return match ? parseInt(match[1]) : 0;
-    }
-
     extractHeightFromQuality(quality) {
-        // Extract height from quality strings like "Full HD (1080p)" or "1080p"
         const match = quality.match(/(\d+)p/);
         return match ? parseInt(match[1]) : 0;
     }
 
-    removeDuplicateFormats(formats, type) {
-        const seen = new Map();
-
-        return formats.filter(format => {
-            let key;
-
-            if (type === 'video') {
-                // For video: use height + container as key, keep highest bitrate
-                const height = format.height || this.extractHeightFromQuality(format.quality);
-                key = `${height}p_${format.container}`;
-
-                if (seen.has(key)) {
-                    const existing = seen.get(key);
-                    const currentBitrate = format.videoBitrate || 0;
-                    const existingBitrate = existing.videoBitrate || 0;
-
-                    if (currentBitrate > existingBitrate) {
-                        seen.set(key, format);
-                        return true;
-                    }
-                    return false;
-                } else {
-                    seen.set(key, format);
-                    return true;
-                }
-            } else {
-                // For audio: use bitrate + container as key
-                const bitrate = format.audioBitrate || this.extractBitrate(format.quality) || 0;
-                key = `${bitrate}kbps_${format.container}`;
-
-                if (seen.has(key)) {
-                    return false; // Skip duplicates
-                } else {
-                    seen.set(key, format);
-                    return true;
-                }
-            }
-        });
-    }
-
-    toggleSectionVisibility(selector, hasContent, index) {
-        const sections = document.querySelectorAll(selector);
-        if (sections[index]) {
-            sections[index].style.display = hasContent ? 'block' : 'none';
-        }
-    }
-
-    updateFormatIndicators() {
-        // Get current tab and selected format
-        const currentTab = document.querySelector('.tab-btn.active').dataset.tab;
-        const isVideoFormat = currentTab === 'video';
-
-        // Get the selected format from the active format option
-        const targetFormat = isVideoFormat
-            ? this.selectedVideoFormat
-            : this.selectedAudioFormat;
-
-        // Update filename placeholder to show the target format
-        const baseFilename = this.filenameInput.value.trim() || this.sanitizeFilename(this.currentVideoInfo?.title || 'video');
-        this.filenameInput.placeholder = `${baseFilename}.${targetFormat}`;
-
-        // Add visual indicator for conversion status
-        if (this.selectedFormat) {
-            const originalFormat = this.selectedFormat.container.toLowerCase();
-            const needsConversion = originalFormat !== targetFormat.toLowerCase();
-
-            if (needsConversion) {
-                this.filenameInput.style.borderColor = 'var(--accent-warning)';
-                this.filenameInput.title = `Will convert from ${originalFormat.toUpperCase()} to ${targetFormat.toUpperCase()}`;
-            } else {
-                this.filenameInput.style.borderColor = 'var(--border-primary)';
-                this.filenameInput.title = `No conversion needed - already ${targetFormat.toUpperCase()}`;
-            }
-        }
-    }
-
-    findBestMatchingFormat(isVideoFormat, targetQuality) {
-        if (isVideoFormat) {
-            // For high resolutions (1080p+), YouTube often separates video and audio streams
-            // So we need to check all video formats, not just those with both video and audio
-            const allVideoFormats = this.availableFormats.filter(f => f.hasVideo);
-            const videoOnlyFormats = this.availableFormats.filter(f => f.hasVideo && !f.hasAudio);
-            const combinedFormats = this.availableFormats.filter(f => f.hasVideo && f.hasAudio);
-
-            console.log(`Finding best format for video quality: ${targetQuality}p`);
-            console.log('All available video formats:', allVideoFormats);
-            console.log('Video-only formats:', videoOnlyFormats);
-            console.log('Combined video+audio formats:', combinedFormats);
-
-            // For high resolutions (1080p+), we need to look at video-only formats first
-            // For 4K (2160p) and above, we MUST use video-only formats
-            let formatsToSearch;
-
-            // For 4K and above, we need to force the high-resolution flag
-            // This will tell the main process to use the separate video/audio download method
-            if (targetQuality >= 2160) {
-                // Create a special format object for 4K
-                const bestVideoFormat = videoOnlyFormats
-                    .filter(f => f.height >= 2160 || (f.quality && f.quality.includes('2160')))
-                    .sort((a, b) => (b.height || 0) - (a.height || 0))[0];
-
-                if (bestVideoFormat) {
-                    console.log('Found 4K video format:', bestVideoFormat);
-                    // Add special flags to tell main process this is high resolution
-                    bestVideoFormat.isHighResolution = true;
-                    bestVideoFormat.targetHeight = 2160;
-                    return bestVideoFormat;
-                }
-
-                // If no 4K format found, use the highest resolution available
-                const highestFormat = videoOnlyFormats
-                    .sort((a, b) => (b.height || 0) - (a.height || 0))[0];
-
-                if (highestFormat) {
-                    console.log('No 4K format found, using highest resolution:', highestFormat);
-                    highestFormat.isHighResolution = true;
-                    highestFormat.targetHeight = highestFormat.height || 1080;
-                    return highestFormat;
-                }
-
-                // Fall back to combined formats if no video-only formats found
-                formatsToSearch = combinedFormats;
-            } else if (targetQuality >= 1080) {
-                // For 1080p, also use video-only formats if available
-                formatsToSearch = videoOnlyFormats.length > 0 ? videoOnlyFormats : combinedFormats;
-                console.log('Using video-only formats for high resolution');
-            } else {
-                // For lower resolutions, prefer combined formats
-                formatsToSearch = combinedFormats;
-                console.log('Using combined formats for standard resolution');
-            }
-
-            // First, try to find an exact match for the target quality
-            let exactMatch = formatsToSearch.find(f => {
-                const height = f.height || this.extractHeightFromQuality(f.quality) || 0;
-                return height === targetQuality;
-            });
-
-            if (exactMatch) {
-                console.log(`Found exact match for ${targetQuality}p:`, exactMatch);
-                return exactMatch;
-            }
-
-            // If no exact match, find the closest higher quality
-            const higherQualityFormats = formatsToSearch.filter(f => {
-                const height = f.height || this.extractHeightFromQuality(f.quality) || 0;
-                return height > targetQuality;
-            }).sort((a, b) => {
-                const heightA = a.height || this.extractHeightFromQuality(a.quality) || 0;
-                const heightB = b.height || this.extractHeightFromQuality(b.quality) || 0;
-                return heightA - heightB; // Sort ascending to get the closest higher quality
-            });
-
-            if (higherQualityFormats.length > 0) {
-                console.log(`Found higher quality format for ${targetQuality}p:`, higherQualityFormats[0]);
-                return higherQualityFormats[0];
-            }
-
-            // If no higher quality, find the highest quality available
-            const sortedFormats = [...formatsToSearch].sort((a, b) => {
-                const heightA = a.height || this.extractHeightFromQuality(a.quality) || 0;
-                const heightB = b.height || this.extractHeightFromQuality(b.quality) || 0;
-                return heightB - heightA; // Sort descending to get highest quality first
-            });
-
-            if (sortedFormats.length > 0) {
-                console.log(`No exact or higher match found, using highest quality:`, sortedFormats[0]);
-                return sortedFormats[0];
-            }
-
-            // If we're looking for high quality but found nothing in video-only formats,
-            // fall back to combined formats
-            if (useAllFormats && combinedFormats.length > 0) {
-                console.log('Falling back to combined formats:', combinedFormats);
-                const bestCombined = combinedFormats.sort((a, b) => {
-                    const heightA = a.height || this.extractHeightFromQuality(a.quality) || 0;
-                    const heightB = b.height || this.extractHeightFromQuality(b.quality) || 0;
-                    return heightB - heightA;
-                })[0];
-                return bestCombined;
-            }
-
-            console.log('No suitable video format found');
-            return null;
-        } else {
-            // Find best audio format matching the target quality
-            const audioFormats = this.availableFormats.filter(f => f.hasAudio && !f.hasVideo);
-
-            console.log('Finding best format for audio quality:', targetQuality);
-            console.log('Available audio formats:', audioFormats);
-
-            // Sort audio formats by bitrate (highest first)
-            const sortedFormats = [...audioFormats].sort((a, b) => {
-                const bitrateA = a.audioBitrate || this.extractBitrate(a.quality) || 0;
-                const bitrateB = b.audioBitrate || this.extractBitrate(b.quality) || 0;
-                return bitrateB - bitrateA;
-            });
-
-            // Find the best format that's at least as good as the target quality
-            // If none found, use the highest quality available
-            let bestFormat = null;
-
-            // First try to find a format with bitrate equal or higher than target
-            for (const format of sortedFormats) {
-                const bitrate = format.audioBitrate || this.extractBitrate(format.quality) || 0;
-                if (bitrate >= targetQuality) {
-                    bestFormat = format;
-                    break;
-                }
-            }
-
-            // If no suitable format found, use the highest quality available
-            if (!bestFormat && sortedFormats.length > 0) {
-                bestFormat = sortedFormats[0];
-            }
-
-            console.log('Selected best audio format:', bestFormat);
-            return bestFormat;
-        }
-    }
-
-    getQualityOrder(quality) {
-        const qualityMap = {
-            '4K (2160p)': 9, '2K (1440p)': 8, 'Full HD (1080p)': 7,
-            'HD (720p)': 6, 'SD (480p)': 5, '360p': 4, '240p': 3, '144p': 2,
-            '2160p': 9, '1440p': 8, '1080p': 7, '720p': 6,
-            '480p': 5, '360p': 4, '240p': 3, '144p': 2
-        };
-
-        // Try exact match first
-        if (qualityMap[quality]) {
-            return qualityMap[quality];
-        }
-
-        // Try to extract resolution from quality string
-        const match = quality.match(/(\d+)p/);
-        if (match) {
-            const height = parseInt(match[1]);
-            if (height >= 2160) return 9;
-            if (height >= 1440) return 8;
-            if (height >= 1080) return 7;
-            if (height >= 720) return 6;
-            if (height >= 480) return 5;
-            if (height >= 360) return 4;
-            if (height >= 240) return 3;
-            if (height >= 144) return 2;
-        }
-
-        return 1;
-    }
-
-    // Open Ko-fi link in default browser
     openKofiLink() {
-        // Use Electron's shell.openExternal to open the link in the default browser
         try {
             window.electronAPI.openExternalLink('https://ko-fi.com/novafova');
             this.showSuccess('Opening Ko-fi page in your browser');
@@ -1190,6 +989,7 @@ class YouTubeDownloader {
         }
     }
 }
+
 // Initialize the app when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
     new YouTubeDownloader();

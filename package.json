@@ -20,7 +20,8 @@
     "node-fetch": "^3.3.2",
     "sax": "^1.4.1",
     "xml2js": "^0.6.2",
-    "xmlbuilder": "^15.1.1"
+    "xmlbuilder": "^15.1.1",
+    "yt-dlp-wrap": "^2.3.12"
   },
   "devDependencies": {
     "electron": "^27.3.11",
@@ -49,7 +50,8 @@
     ],
     "win": {
       "target": "nsis",
-      "artifactName": "Loaded-Setup-${version}.exe"
+      "artifactName": "Loaded-Setup-${version}.exe",
+      "icon": "assets/app-icon-256-hq.ico"
     },
     "nsis": {
       "oneClick": false,
@@ -59,6 +61,9 @@
       "shortcutName": "Loaded"
     },
     "asar": true,
+    "asarUnpack": [
+      "**/node_modules/ffmpeg-static/**/*"
+    ],
     "compression": "maximum"
   }
 }

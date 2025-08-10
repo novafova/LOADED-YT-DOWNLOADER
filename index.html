@@ -41,6 +41,9 @@
                             </div>
                         </div>
                         <div class="support-section">
+                            <button id="settingsBtn" class="settings-btn" title="Settings">
+                                <span class="settings-icon">⚙️</span>
+                            </button>
                             <a href="#" id="supportBtn" class="support-btn" title="Support on Ko-fi">
                                 <span class="support-icon">☕</span>
                                 <span class="support-text">Support</span>
@@ -52,7 +55,15 @@
                 <!-- URL Input Section -->
                 <section class="url-section">
                     <div class="input-group">
-                        <input type="text" id="urlInput" placeholder="Paste YouTube URL here..." class="url-input">
+                        <div class="url-input-container">
+                            <input type="text" id="urlInput" placeholder="Paste YouTube URL here..." class="url-input">
+                            <button id="clearBtn" class="clear-btn hidden" title="Clear URL">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                                </svg>
+                            </button>
+                        </div>
                         <button id="fetchBtn" class="fetch-btn">
                             <span class="btn-text">LOAD</span>
                             <div class="spinner hidden"></div>
@@ -192,8 +203,11 @@
                                 <div class="settings-header">
                                     <h4>⚙️ EXPORT CONFIGURATION</h4>
                                     <div class="auto-export-toggle">
-                                        <input type="checkbox" id="autoExportToggle" checked>
-                                        <label for="autoExportToggle" class="toggle-label">AUTO-EXPORT</label>
+                                        <label class="custom-checkbox">
+                                            <input type="checkbox" id="autoExportToggle" checked>
+                                            <span class="checkbox-box"></span>
+                                            <span class="checkbox-label">AUTO-EXPORT</span>
+                                        </label>
                                     </div>
                                 </div>
 
@@ -220,6 +234,106 @@
                         </div>
                     </div>
                 </section>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div class="settings-modal hidden" id="settingsModal">
+        <div class="settings-overlay"></div>
+        <div class="settings-content">
+            <div class="settings-header">
+                <h2>⚙️ Application Settings</h2>
+                <button class="settings-close-btn" id="settingsCloseBtn">×</button>
+            </div>
+            
+            <div class="settings-body">
+                <div class="setting-section">
+                    <h3>🚀 Performance Settings</h3>
+                    
+                    <div class="setting-item">
+                        <label for="encodingMethod">Conversion Method:</label>
+                        <select id="encodingMethod" class="setting-select">
+                            <option value="gpu">GPU Hardware Acceleration (Fastest)</option>
+                            <option value="cpu">CPU Software Encoding (Compatible)</option>
+                        </select>
+                        <p class="setting-description">
+                            GPU acceleration is 5-10x faster but requires compatible graphics drivers. 
+                            CPU encoding is slower but works on all systems.
+                        </p>
+                    </div>
+                    
+                    <div class="setting-item">
+                        <label for="maxConcurrentDownloads">Max Concurrent Downloads:</label>
+                        <select id="maxConcurrentDownloads" class="setting-select">
+                            <option value="1">1 (Recommended)</option>
+                            <option value="2">2</option>
+                            <option value="3">3</option>
+                        </select>
+                        <p class="setting-description">
+                            Number of simultaneous downloads. Higher values may impact performance.
+                        </p>
+                    </div>
+                </div>
+                
+                <div class="setting-section">
+                    <h3>📁 Download Settings</h3>
+                    
+                    <div class="setting-item">
+                        <label for="defaultVideoQuality">Default Video Quality:</label>
+                        <select id="defaultVideoQuality" class="setting-select">
+                            <option value="2160">4K (2160p)</option>
+                            <option value="1440">2K (1440p)</option>
+                            <option value="1080" selected>Full HD (1080p)</option>
+                            <option value="720">HD (720p)</option>
+                        </select>
+                    </div>
+                    
+                    <div class="setting-item">
+                        <label for="defaultVideoFormat">Default Video Format:</label>
+                        <select id="defaultVideoFormat" class="setting-select">
+                            <option value="mp4" selected>MP4 (Universal)</option>
+                            <option value="mov">MOV (Apple)</option>
+                            <option value="mkv">MKV (High Quality)</option>
+                        </select>
+                    </div>
+                    
+                    <div class="setting-item">
+                        <label class="custom-checkbox">
+                            <input type="checkbox" id="autoSelectBestQuality" checked>
+                            <span class="checkbox-box"></span>
+                            <span class="checkbox-label">Auto-select best available quality</span>
+                        </label>
+                        <p class="setting-description">
+                            Automatically select the highest quality available for each video.
+                        </p>
+                    </div>
+                </div>
+                
+                <div class="setting-section">
+                    <h3>🎨 Interface Settings</h3>
+                    
+                    <div class="setting-item">
+                        <label class="custom-checkbox">
+                            <input type="checkbox" id="showAdvancedOptions">
+                            <span class="checkbox-box"></span>
+                            <span class="checkbox-label">Show advanced options</span>
+                        </label>
+                    </div>
+                    
+                    <div class="setting-item">
+                        <label class="custom-checkbox">
+                            <input type="checkbox" id="minimizeToTray">
+                            <span class="checkbox-box"></span>
+                            <span class="checkbox-label">Minimize to system tray</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="settings-footer">
+                <button class="settings-btn-secondary" id="resetSettingsBtn">Reset to Defaults</button>
+                <button class="settings-btn-primary" id="saveSettingsBtn">Save Settings</button>
             </div>
         </div>
     </div>

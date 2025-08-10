@@ -18,11 +18,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // External links
   openExternalLink: (url) => ipcRenderer.invoke('open-external-link', url),
   
+  // Fallback dialog
+  showFallbackDialog: (options) => ipcRenderer.invoke('show-fallback-dialog', options),
+  
   // Event listeners
   onDownloadProgress: (callback) => {
     ipcRenderer.on('download-progress', (event, data) => callback(data));
   },
   onConversionProgress: (callback) => {
     ipcRenderer.on('conversion-progress', (event, percent) => callback(percent));
+  },
+  onDownloadFallbackRequired: (callback) => {
+    ipcRenderer.on('download-fallback-required', (event, data) => callback(data));
   }
 });

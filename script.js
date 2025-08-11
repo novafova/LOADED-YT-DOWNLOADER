@@ -316,7 +316,8 @@ class YouTubeDownloader {
         const qualityThresholds = [4320, 2880, 2160, 1440, 1080, 720, 480, 360, 240, 144];
         const visibleQualities = qualityThresholds.filter(quality => {
             if (maxVideoHeight >= 2160) {
-                return quality <= maxVideoHeight && quality >= 720;
+                // If 4K is available, skip 720p and show higher qualities
+                return quality <= maxVideoHeight && quality >= 1080;
             } else if (maxVideoHeight >= 1440) {
                 return quality <= maxVideoHeight && quality >= 720;
             } else if (maxVideoHeight >= 1080) {
@@ -818,6 +819,7 @@ class YouTubeDownloader {
         const savedSettings = JSON.parse(localStorage.getItem('appSettings') || '{}');
         this.settings = { ...defaultSettings, ...savedSettings };
 
+        // Update UI elements with saved settings
         if (this.encodingMethodSelect) this.encodingMethodSelect.value = this.settings.encodingMethod;
         if (this.maxConcurrentDownloadsSelect) this.maxConcurrentDownloadsSelect.value = this.settings.maxConcurrentDownloads;
         if (this.defaultVideoQualitySelect) this.defaultVideoQualitySelect.value = this.settings.defaultVideoQuality;
@@ -856,11 +858,30 @@ class YouTubeDownloader {
     applySettings() {
         window.appSettings = this.settings;
 
+        // Apply advanced options visibility
         if (this.settings.showAdvancedOptions) {
             document.body.classList.add('show-advanced-options');
         } else {
             document.body.classList.remove('show-advanced-options');
         }
+
+        // Apply default quality selection when loading videos
+        this.defaultVideoQuality = this.settings.defaultVideoQuality;
+        this.defaultVideoFormat = this.settings.defaultVideoFormat;
+
+        // Apply minimize to tray setting
+        if (window.electronAPI && window.electronAPI.setMinimizeToTray) {
+            window.electronAPI.setMinimizeToTray(this.settings.minimizeToTray);
+        }
+
+        // Apply encoding method
+        this.encodingMethod = this.settings.encodingMethod;
+
+        // Apply max concurrent downloads
+        this.maxConcurrentDownloads = this.settings.maxConcurrentDownloads;
+
+        // Update UI based on settings
+        this.updateUIBasedOnSettings();
     }
 
     getEncodingMethod() {
@@ -987,6 +1008,123 @@ class YouTubeDownloader {
             console.error('Failed to open Ko-fi link:', error);
             this.showError('Failed to open Ko-fi page');
         }
+    }
+    updateUIBasedOnSettings() {
+        // Apply auto-select best quality setting
+        if (this.settings.autoSelectBestQuality && this.currentVideoInfo) {
+            this.autoSelectBestQualityForVideo();
+        }
+
+        // Apply default format selections
+        if (this.settings.defaultVideoFormat) {
+            const defaultVideoFormat = document.querySelector(`#videoTab .format-option[data-format="${this.settings.defaultVideoFormat}"]`);
+            if (defaultVideoFormat) {
+                defaultVideoFormat.click();
+            }
+        }
+
+        // Apply default quality selection
+        if (this.settings.defaultVideoQuality) {
+            const defaultQualityOption = document.querySelector(`#videoQualityOptions .quality-option[data-quality="${this.settings.defaultVideoQuality}"]`);
+            if (defaultQualityOption) {
+                defaultQualityOption.click();
+            }
+        }
+
+        // Update UI visibility based on advanced options
+        this.updateAdvancedOptionsVisibility();
+    }
+
+    autoSelectBestQualityForVideo() {
+        if (!this.currentVideoInfo || !this.availableFormats) return;
+
+        // Find the highest quality available
+        const videoFormats = this.availableFormats.filter(f => f.hasVideo);
+        if (videoFormats.length === 0) return;
+
+        const maxHeight = Math.max(...videoFormats.map(f => f.height || this.extractHeightFromQuality(f.quality) || 0));
+
+        // Select the highest quality option available
+        const bestQualityOption = document.querySelector(`#videoQualityOptions .quality-option[data-quality="${maxHeight}"]`);
+        if (bestQualityOption) {
+            bestQualityOption.click();
+        } else {
+            // Fallback to first available option
+            const firstOption = document.querySelector('#videoQualityOptions .quality-option');
+            if (firstOption) {
+                firstOption.click();
+            }
+        }
+    }
+
+    updateAdvancedOptionsVisibility() {
+        const advancedElements = document.querySelectorAll('.advanced-option');
+        advancedElements.forEach(element => {
+            if (this.settings.showAdvancedOptions) {
+                element.style.display = 'block';
+            } else {
+                element.style.display = 'none';
+            }
+        });
+    }
+
+    // Enhanced settings validation
+    validateSettings(settings) {
+        const validEncodingMethods = ['gpu', 'cpu'];
+        const validVideoFormats = ['mp4', 'mov', 'mkv'];
+        const validQualities = [144, 240, 360, 480, 720, 1080, 1440, 2160, 2880, 4320];
+
+        return {
+            encodingMethod: validEncodingMethods.includes(settings.encodingMethod) ? settings.encodingMethod : 'gpu',
+            maxConcurrentDownloads: Math.max(1, Math.min(3, parseInt(settings.maxConcurrentDownloads) || 1)),
+            defaultVideoQuality: validQualities.includes(parseInt(settings.defaultVideoQuality)) ? parseInt(settings.defaultVideoQuality) : 1080,
+            defaultVideoFormat: validVideoFormats.includes(settings.defaultVideoFormat) ? settings.defaultVideoFormat : 'mp4',
+            autoSelectBestQuality: Boolean(settings.autoSelectBestQuality),
+            showAdvancedOptions: Boolean(settings.showAdvancedOptions),
+            minimizeToTray: Boolean(settings.minimizeToTray)
+        };
+    }
+
+    // Add method to export settings
+    exportSettings() {
+        const settingsBlob = new Blob([JSON.stringify(this.settings, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(settingsBlob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'loaded-settings.json';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        this.showSuccess('Settings exported successfully!');
+    }
+
+    // Add method to import settings
+    async importSettings() {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.json';
+
+        input.onchange = async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            try {
+                const text = await file.text();
+                const importedSettings = JSON.parse(text);
+
+                // Validate imported settings
+                this.settings = this.validateSettings(importedSettings);
+
+                localStorage.setItem('appSettings', JSON.stringify(this.settings));
+                this.loadSettings();
+                this.showSuccess('Settings imported successfully!');
+            } catch (error) {
+                this.showError('Failed to import settings. Please check the file format.');
+            }
+        };
+
+        input.click();
     }
 }
 
